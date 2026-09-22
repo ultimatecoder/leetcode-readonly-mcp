@@ -9,26 +9,26 @@
  * }
  */
 export const SEARCH_PROBLEMS_QUERY = `
-query problemsetQuestionList(
+query (
     $categorySlug: String
     $limit: Int
     $skip: Int
     $filters: QuestionListFilterInput
 ) {
-    problemsetQuestionList(
+    problemsetQuestionList: questionList(
         categorySlug: $categorySlug
         limit: $limit
         skip: $skip
         filters: $filters
     ) {
-        hasMore
-        total
-        questions {
-            title
-            titleCn
-            titleSlug
-            difficulty
+        total: totalNum
+        questions: data {
             acRate
+            difficulty
+            questionFrontendId
+            isPaidOnly
+            title
+            titleSlug
             topicTags {
                 slug
             }

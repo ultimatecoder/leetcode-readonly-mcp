@@ -1,13 +1,17 @@
 import { pino } from "pino";
 
-const logger = pino({
-    level: "info",
-    formatters: {
-        level: (label: string) => ({ level: label.toUpperCase() })
+// Log to stderr: stdout carries the MCP stdio protocol.
+const logger = pino(
+    {
+        level: "info",
+        formatters: {
+            level: (label: string) => ({ level: label.toUpperCase() })
+        },
+        timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
+        messageKey: "message",
+        nestedKey: "payload"
     },
-    timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
-    messageKey: "message",
-    nestedKey: "payload"
-});
+    pino.destination(2)
+);
 
 export default logger;
