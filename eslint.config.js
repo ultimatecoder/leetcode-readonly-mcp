@@ -15,7 +15,7 @@ export default defineConfig([
         rules: {
             ...prettierRules
         },
-        languageOptions: { globals: globals.browser }
+        languageOptions: { globals: { ...globals.browser, ...globals.node } }
     },
     tseslint.configs.recommended,
     {

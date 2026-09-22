@@ -1,31 +1,4 @@
 /**
- * Programming languages officially supported by LeetCode for problem submissions.
- * These language identifiers are used when filtering submissions or submitting solutions.
- */
-export const PROGRAMMING_LANGS: string[] = [
-    "cpp",
-    "java",
-    "python",
-    "python3",
-    "c",
-    "csharp",
-    "javascript",
-    "typescript",
-    "php",
-    "swift",
-    "kotlin",
-    "dart",
-    "golang",
-    "ruby",
-    "scala",
-    "rust",
-    "racket",
-    "erlang",
-    "elixir",
-    "cangjie"
-];
-
-/**
  * LeetCode problem categories that can be used when searching for problems.
  * These categories represent different domains of programming challenges.
  */

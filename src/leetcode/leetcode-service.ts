@@ -1,178 +1,75 @@
 import { Credential, LeetCode } from "leetcode-query";
-import {
-    assertRunStartResponse,
-    assertSubmitStartResponse,
-    buildLeetCodeHeaders,
-    buildLeetCodeHttpAuth,
-    pollCheck,
-    postJson
-} from "../utils/leetcode-http.js";
+import { resolveAssetUrl } from "../utils/images.js";
 import logger from "../utils/logger.js";
-import { SEARCH_PROBLEMS_QUERY } from "./graphql/global/search-problems.js";
-import { SOLUTION_ARTICLE_DETAIL_QUERY } from "./graphql/global/solution-article-detail.js";
-import { SOLUTION_ARTICLES_QUERY } from "./graphql/global/solution-articles.js";
-import { LeetCodeBaseService } from "./leetcode-base-service.js";
+import { COMPANY_TAG_STATS_QUERY } from "./graphql/companies.js";
+import { EDITORIAL_QUERY } from "./graphql/editorial.js";
+import { buildPlaygroundCodesQuery } from "./graphql/playground.js";
+import { SEARCH_PROBLEMS_QUERY } from "./graphql/search-problems.js";
+
+export const LEETCODE_ORIGIN = "https://leetcode.com";
+
+const SLIDES_BASE_URL =
+    "https://assets.leetcode.com/static_assets/media/documents/";
+
+export interface PlaygroundCode {
+    langSlug: string;
+    code: string;
+}
+
+export interface EditorialData {
+    questionFrontendId?: string;
+    title?: string;
+    titleSlug: string;
+    isPaidOnly?: boolean;
+    content: string | null;
+    paidOnly: boolean;
+    canSeeDetail: boolean;
+    hasVideoSolution: boolean;
+    paidOnlyVideo: boolean;
+}
+
+export interface CompanyStat {
+    name: string;
+    slug?: string;
+    timesEncountered?: number;
+}
 
 /**
- * LeetCode Global API Service Implementation
+ * Read-only LeetCode (leetcode.com) service.
  *
- * This class provides methods to interact with the LeetCode Global API
+ * Every method only reads data: GraphQL queries through leetcode-query,
+ * or plain GETs for static editorial assets.
  */
-export class LeetCodeGlobalService implements LeetCodeBaseService {
+export class LeetCodeService {
     private readonly leetCodeApi: LeetCode;
     private readonly credential: Credential;
-    private readonly origin = "https://leetcode.com";
 
     constructor(leetCodeApi: LeetCode, credential: Credential) {
         this.leetCodeApi = leetCodeApi;
         this.credential = credential;
     }
 
-    private getHttpHeaders(titleSlug: string): HeadersInit {
-        const auth = buildLeetCodeHttpAuth({
-            session: this.credential.session ?? "",
-            csrfToken: this.credential.csrf ?? ""
-        });
-
-        const referer = `${this.origin}/problems/${titleSlug}/`;
-        return buildLeetCodeHeaders({
-            auth,
-            origin: this.origin,
-            referer
-        });
-    }
-
-    async fetchUserSubmissionDetail(id: number): Promise<any> {
-        if (!this.isAuthenticated()) {
-            throw new Error(
-                "Authentication required to fetch user submission detail"
-            );
-        }
-        return await this.leetCodeApi.submission(id);
-    }
-
-    async fetchUserStatus(): Promise<any> {
-        if (!this.isAuthenticated()) {
-            throw new Error("Authentication required to fetch user status");
-        }
-        return await this.leetCodeApi.whoami().then((res) => {
-            return {
-                isSignedIn: res?.isSignedIn ?? false,
-                username: res?.username ?? "",
-                avatar: res?.avatar ?? "",
-                isAdmin: res?.isAdmin ?? false
-            };
-        });
-    }
-
-    async fetchUserAllSubmissions(options: {
-        offset: number;
-        limit: number;
-        questionSlug?: string;
-        lastKey?: string;
-        lang?: string;
-        status?: string;
-    }): Promise<any> {
-        if (!this.isAuthenticated()) {
-            throw new Error(
-                "Authentication required to fetch user submissions"
-            );
-        }
-        const submissions = await this.leetCodeApi.submissions({
-            offset: options.offset ?? 0,
-            limit: options.limit ?? 20,
-            slug: options.questionSlug
-        });
-        return { submissions };
-    }
-
     /**
-     * 获取用户最近的提交记录
-     * @param username
-     * @param limit
-     * @returns
+     * Creates a service, initializing the credential with an optional session cookie.
      */
-    async fetchUserRecentSubmissions(
-        username: string,
-        limit?: number
-    ): Promise<any> {
-        return await this.leetCodeApi.recent_submissions(username, limit);
-    }
-
-    /**
-     * 获取用户最近 AC 的提交记录
-     * @param username
-     * @param limit
-     * @returns
-     */
-    async fetchUserRecentACSubmissions(
-        username: string,
-        limit?: number
-    ): Promise<any> {
-        return await this.leetCodeApi.graphql({
-            query: `
-                    query ($username: String!, $limit: Int) {
-                        recentAcSubmissionList(username: $username, limit: $limit) {
-                            id
-                            title
-                            titleSlug
-                            time
-                            timestamp
-                            statusDisplay
-                            lang
-                        }
-                    }
-
-                `,
-            variables: {
-                username,
-                limit
-            }
-        });
-    }
-
-    async fetchUserProfile(username: string): Promise<any> {
-        const profile = await this.leetCodeApi.user(username);
-        if (profile && profile.matchedUser) {
-            const { matchedUser } = profile;
-
-            return {
-                username: matchedUser.username,
-                realName: matchedUser.profile.realName,
-                userAvatar: matchedUser.profile.userAvatar,
-                countryName: matchedUser.profile.countryName,
-                githubUrl: matchedUser.githubUrl,
-                company: matchedUser.profile.company,
-                school: matchedUser.profile.school,
-                ranking: matchedUser.profile.ranking,
-                totalSubmissionNum: matchedUser.submitStats?.totalSubmissionNum
-            };
+    static async create(sessionCookie?: string): Promise<LeetCodeService> {
+        const credential = new Credential();
+        if (sessionCookie) {
+            await credential.init(sessionCookie);
         }
-        return profile;
+        return new LeetCodeService(new LeetCode(credential), credential);
     }
 
-    async fetchUserContestRanking(
-        username: string,
-        attended: boolean = true
-    ): Promise<any> {
-        const contestInfo = await this.leetCodeApi.user_contest_info(username);
-        if (contestInfo.userContestRankingHistory && attended) {
-            contestInfo.userContestRankingHistory =
-                contestInfo.userContestRankingHistory.filter((contest: any) => {
-                    return contest && contest.attended;
-                });
-        }
-        return contestInfo;
+    isAuthenticated(): boolean {
+        return !!this.credential.session;
     }
 
     async fetchDailyChallenge(): Promise<any> {
-        const dailyChallenge = await this.leetCodeApi.daily();
-        return dailyChallenge;
+        return await this.leetCodeApi.daily();
     }
 
     async fetchProblem(titleSlug: string): Promise<any> {
-        const problem = await this.leetCodeApi.problem(titleSlug);
-        return problem;
+        return await this.leetCodeApi.problem(titleSlug);
     }
 
     async fetchProblemSimplified(titleSlug: string): Promise<any> {
@@ -193,12 +90,11 @@ export class LeetCodeGlobalService implements LeetCodeBaseService {
         if (problem.similarQuestions) {
             try {
                 const allQuestions = JSON.parse(problem.similarQuestions);
-                parsedSimilarQuestions = allQuestions
-                    .slice(0, 3)
-                    .map((q: any) => ({
-                        titleSlug: q.titleSlug,
-                        difficulty: q.difficulty
-                    }));
+                parsedSimilarQuestions = allQuestions.map((q: any) => ({
+                    title: q.title,
+                    titleSlug: q.titleSlug,
+                    difficulty: q.difficulty
+                }));
             } catch (e) {
                 logger.error("Error parsing similarQuestions: %s", e);
             }
@@ -207,8 +103,10 @@ export class LeetCodeGlobalService implements LeetCodeBaseService {
         return {
             titleSlug,
             questionId: problem.questionId,
+            questionFrontendId: problem.questionFrontendId,
             title: problem.title,
             content: problem.content,
+            isPaidOnly: problem.isPaidOnly,
             difficulty: problem.difficulty,
             topicTags: filteredTopicTags,
             codeSnippets: filteredCodeSnippets,
@@ -216,6 +114,26 @@ export class LeetCodeGlobalService implements LeetCodeBaseService {
             hints: problem.hints,
             similarQuestions: parsedSimilarQuestions
         };
+    }
+
+    /**
+     * Fetches company tag statistics (premium). Returns null when unavailable,
+     * e.g. without a premium session.
+     */
+    async fetchCompanies(
+        titleSlug: string
+    ): Promise<Record<string, CompanyStat[]> | null> {
+        try {
+            const response = await this.leetCodeApi.graphql({
+                query: COMPANY_TAG_STATS_QUERY,
+                variables: { titleSlug }
+            });
+            const raw = response.data?.question?.companyTagStatsV2;
+            return parseCompanyTagStats(raw);
+        } catch (e) {
+            logger.error("Error fetching company tag stats: %s", e);
+            return null;
+        }
     }
 
     async searchProblems(
@@ -257,265 +175,107 @@ export class LeetCodeGlobalService implements LeetCodeBaseService {
         return {
             total: questionList.total,
             questions: questionList.questions.map((question: any) => ({
+                questionFrontendId: question.questionFrontendId,
                 title: question.title,
                 titleSlug: question.titleSlug,
                 difficulty: question.difficulty,
+                isPaidOnly: question.isPaidOnly,
                 acRate: question.acRate,
                 topicTags: question.topicTags.map((tag: any) => tag.slug)
             }))
         };
     }
 
-    async fetchUserProgressQuestionList(options?: {
-        offset?: number;
-        limit?: number;
-        questionStatus?: string;
-        difficulty?: string[];
-    }): Promise<any> {
-        if (!this.isAuthenticated()) {
-            throw new Error(
-                "Authentication required to fetch user progress question list"
-            );
-        }
-
-        const filters = {
-            skip: options?.offset || 0,
-            limit: options?.limit || 20,
-            questionStatus: options?.questionStatus as any,
-            difficulty: options?.difficulty as any[]
-        };
-
-        return await this.leetCodeApi.user_progress_questions(filters);
-    }
-
-    /**
-     * Retrieves a list of solutions for a specific problem.
-     *
-     * @param questionSlug - The URL slug/identifier of the problem
-     * @param options - Optional parameters for filtering and sorting the solutions
-     * @returns Promise resolving to the solutions list data
-     */
-    async fetchQuestionSolutionArticles(
-        questionSlug: string,
-        options?: any
-    ): Promise<any> {
-        const variables: any = {
-            questionSlug,
-            first: options?.limit || 5,
-            skip: options?.skip || 0,
-            orderBy: options?.orderBy || "HOT",
-            userInput: options?.userInput,
-            tagSlugs: options?.tagSlugs ?? []
-        };
-
-        return await this.leetCodeApi
-            .graphql({
-                query: SOLUTION_ARTICLES_QUERY,
-                variables
-            })
-            .then((res) => {
-                const ugcArticleSolutionArticles =
-                    res.data?.ugcArticleSolutionArticles;
-                if (!ugcArticleSolutionArticles) {
-                    return {
-                        totalNum: 0,
-                        hasNextPage: false,
-                        articles: []
-                    };
-                }
-                const data = {
-                    totalNum: ugcArticleSolutionArticles?.totalNum || 0,
-                    hasNextPage:
-                        ugcArticleSolutionArticles?.pageInfo?.hasNextPage ||
-                        false,
-                    articles:
-                        ugcArticleSolutionArticles?.edges
-                            ?.map((edge: any) => {
-                                if (
-                                    edge?.node &&
-                                    edge.node.topicId &&
-                                    edge.node.slug
-                                ) {
-                                    edge.node.articleUrl = `https://leetcode.com/problems/${questionSlug}/solutions/${edge.node.topicId}/${edge.node.slug}`;
-                                }
-                                return edge.node;
-                            })
-                            .filter((node: any) => node && node.canSee) || []
-                };
-
-                return data;
-            });
-    }
-
-    /**
-     * Retrieves detailed information about a specific solution on LeetCode Global.
-     *
-     * @param topicId - The topic ID of the solution
-     * @returns Promise resolving to the solution detail data
-     */
-    async fetchSolutionArticleDetail(topicId: string): Promise<any> {
-        return await this.leetCodeApi
-            .graphql({
-                query: SOLUTION_ARTICLE_DETAIL_QUERY,
-                variables: {
-                    topicId
-                }
-            })
-            .then((response) => {
-                return response.data?.ugcArticleSolutionArticle;
-            });
-    }
-
-    /**
-     * Note feature is not supported in LeetCode Global.
-     * This method is implemented to satisfy the interface but will always throw an error.
-     *
-     * @param options - Query parameters (not used)
-     * @throws Error indicating the feature is not supported on Global platform
-     */
-    async fetchUserNotes(options: {
-        aggregateType: string;
-        keyword?: string;
-        orderBy?: string;
-        limit?: number;
-        skip?: number;
-    }): Promise<any> {
-        throw new Error("Notes feature is not supported in LeetCode Global");
-    }
-
-    /**
-     * Note feature is not supported in LeetCode Global.
-     * This method is implemented to satisfy the interface but will always throw an error.
-     *
-     * @param questionId - The question ID (not used)
-     * @param limit - Maximum number of notes (not used)
-     * @param skip - Pagination offset (not used)
-     * @throws Error indicating the feature is not supported on Global platform
-     */
-    async fetchNotesByQuestionId(
-        questionId: string,
-        limit?: number,
-        skip?: number
-    ): Promise<any> {
-        throw new Error("Notes feature is not supported in LeetCode Global");
-    }
-
-    /**
-     * Note feature is not supported in LeetCode Global.
-     * This method is implemented to satisfy the interface but will always throw an error.
-     */
-    async createUserNote(
-        content: string,
-        noteType: string,
-        targetId: string,
-        summary: string
-    ): Promise<any> {
-        throw new Error("Notes feature is not supported in LeetCode Global");
-    }
-
-    /**
-     * Note feature is not supported in LeetCode Global.
-     * This method is implemented to satisfy the interface but will always throw an error.
-     */
-    async updateUserNote(
-        noteId: string,
-        content: string,
-        summary: string
-    ): Promise<any> {
-        throw new Error("Notes feature is not supported in LeetCode Global");
-    }
-
-    async runCode(params: {
-        titleSlug: string;
-        questionId: string;
-        lang: string;
-        typedCode: string;
-        dataInput?: string;
-        timeoutMs?: number;
-        pollIntervalMs?: number;
-    }): Promise<{
-        start: Record<string, unknown>;
-        checkUrl: string;
-        check: Record<string, unknown>;
-    }> {
-        if (!this.isAuthenticated()) {
-            throw new Error("Authentication required to run code");
-        }
-
-        const headers = this.getHttpHeaders(params.titleSlug);
-        const startUrl = `${this.origin}/problems/${params.titleSlug}/interpret_solution/`;
-
-        const start = await postJson(
-            startUrl,
-            {
-                data_input: params.dataInput ?? "",
-                lang: params.lang,
-                question_id: params.questionId,
-                typed_code: params.typedCode
-            },
-            headers
-        );
-
-        assertRunStartResponse(start, `POST ${startUrl}`);
-
-        const checkUrl = `${this.origin}/submissions/detail/${start.interpret_id}/check/`;
-        const check = await pollCheck(checkUrl, headers, {
-            timeoutMs: params.timeoutMs,
-            pollIntervalMs: params.pollIntervalMs
+    async fetchEditorial(titleSlug: string): Promise<EditorialData> {
+        const response = await this.leetCodeApi.graphql({
+            query: EDITORIAL_QUERY,
+            variables: { titleSlug }
         });
-
-        return { start, checkUrl, check };
-    }
-
-    async submitSolution(params: {
-        titleSlug: string;
-        questionId: string;
-        lang: string;
-        typedCode: string;
-        timeoutMs?: number;
-        pollIntervalMs?: number;
-    }): Promise<{
-        start: Record<string, unknown>;
-        checkUrl: string;
-        check: Record<string, unknown>;
-    }> {
-        if (!this.isAuthenticated()) {
-            throw new Error("Authentication required to submit solution");
+        const question = response.data?.question;
+        if (!question) {
+            throw new Error(`Problem ${titleSlug} not found`);
         }
+        const solution = question.solution;
+        return {
+            questionFrontendId: question.questionFrontendId,
+            title: question.title,
+            titleSlug,
+            isPaidOnly: question.isPaidOnly,
+            content: solution?.content ?? null,
+            paidOnly: !!solution?.paidOnly,
+            canSeeDetail: !!solution?.canSeeDetail,
+            hasVideoSolution: !!solution?.hasVideoSolution,
+            paidOnlyVideo: !!solution?.paidOnlyVideo
+        };
+    }
 
-        const headers = this.getHttpHeaders(params.titleSlug);
-        const startUrl = `${this.origin}/problems/${params.titleSlug}/submit/`;
-
-        const start = await postJson(
-            startUrl,
-            {
-                lang: params.lang,
-                question_id: params.questionId,
-                typed_code: params.typedCode
-            },
-            headers
-        );
-
-        assertSubmitStartResponse(start, `POST ${startUrl}`);
-
-        const checkUrl = `${this.origin}/submissions/detail/${start.submission_id}/check/`;
-        const check = await pollCheck(checkUrl, headers, {
-            timeoutMs: params.timeoutMs,
-            pollIntervalMs: params.pollIntervalMs
+    async fetchPlaygroundCodes(uuid: string): Promise<PlaygroundCode[]> {
+        if (!/^[A-Za-z0-9_-]+$/.test(uuid)) {
+            throw new Error(`Invalid playground uuid: ${uuid}`);
+        }
+        const response = await this.leetCodeApi.graphql({
+            query: buildPlaygroundCodesQuery(uuid)
         });
-
-        return { start, checkUrl, check };
+        return response.data?.allPlaygroundCodes ?? [];
     }
 
-    isAuthenticated(): boolean {
-        return (
-            !!this.credential &&
-            !!this.credential.csrf &&
-            !!this.credential.session
+    /**
+     * Fetches the frame image URLs of an editorial slideshow.
+     *
+     * @param stem - Path after "Documents/" without ".json", e.g. "146/146_slides"
+     */
+    async fetchSlideFrames(stem: string): Promise<string[]> {
+        const candidates = [stem, stem.toLowerCase()].filter(
+            (value, index, all) => all.indexOf(value) === index
         );
+        for (const candidate of candidates) {
+            const url = SLIDES_BASE_URL + candidate + ".json";
+            const res = await fetch(url);
+            if (!res.ok) {
+                continue;
+            }
+            const data: any = await res.json();
+            if (Array.isArray(data?.timeline)) {
+                return data.timeline
+                    .map((frame: any) => frame?.image)
+                    .filter((image: unknown) => typeof image === "string")
+                    .map((image: string) => resolveAssetUrl(image, url));
+            }
+        }
+        throw new Error(`Slide timeline not found for ${stem}`);
     }
+}
 
-    isCN(): boolean {
-        return false;
+/**
+ * Parses companyTagStatsV2 (JSON string keyed by timeframe) into company lists.
+ */
+export function parseCompanyTagStats(
+    raw: unknown
+): Record<string, CompanyStat[]> | null {
+    if (typeof raw !== "string" || raw.length === 0) {
+        return null;
     }
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return null;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return null;
+    }
+    const result: Record<string, CompanyStat[]> = {};
+    for (const [timeframe, companies] of Object.entries(parsed)) {
+        if (!Array.isArray(companies)) {
+            continue;
+        }
+        result[timeframe] = companies
+            .filter((company: any) => company && company.name)
+            .map((company: any) => ({
+                name: company.name,
+                slug: company.slug,
+                timesEncountered: company.timesEncountered ?? company.count
+            }));
+    }
+    return result;
 }

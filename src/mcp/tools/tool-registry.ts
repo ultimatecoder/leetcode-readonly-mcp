@@ -1,13 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { RegistryBase } from "../../common/registry-base.js";
-import { LeetCodeBaseService } from "../../leetcode/leetcode-base-service.js";
+import { LeetCodeService } from "../../leetcode/leetcode-service.js";
 
 /**
- * Base registry class for LeetCode tools that provides site type detection and authentication status checks.
- * This abstract class defines the framework for registering different categories of tools based on
- * site version (Global or CN) and authentication requirements.
+ * Base registry class for LeetCode tools.
  */
-export abstract class ToolRegistry extends RegistryBase {
+export abstract class ToolRegistry {
     /**
      * Creates a new tool registry instance.
      *
@@ -16,16 +13,11 @@ export abstract class ToolRegistry extends RegistryBase {
      */
     constructor(
         protected server: McpServer,
-        protected leetcodeService: LeetCodeBaseService
-    ) {
-        super(server, leetcodeService);
-    }
+        protected leetcodeService: LeetCodeService
+    ) {}
 
     /**
-     * Registers all applicable tools based on site version and authentication status.
-     * This method follows a specific registration sequence to ensure proper tool organization.
+     * Registers the tools of this registry with the MCP server.
      */
-    public registerTools(): void {
-        this.register();
-    }
+    public abstract registerTools(): void;
 }
