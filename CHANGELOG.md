@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.0 (2026-09-22) — leetcode-readonly-mcp
+
+Forked from [jinzcdev/leetcode-mcp-server](https://github.com/jinzcdev/leetcode-mcp-server) v1.4.0 and made strictly read-only.
+
+### Breaking Changes
+
+- removed `submit_solution`, `run_code`, note, user, contest and community solution tools
+- removed MCP resources, leetcode.cn support and the Streamable HTTP transport
+- package renamed to `leetcode-readonly-mcp`; session is read from `LEETCODE_SESSION` only
+
+### Features
+
+- **editorial:** `get_problem_editorial` returns the official editorial with playground code (default `java`, any langSlug, or `all`), images and slideshow frames
+- **problem:** `get_problem` returns Markdown, company tags (premium) and description images
+- **images:** images are downloaded from LeetCode hosts and returned as MCP image content, downscaled to 800px JPEG
+
 ## [1.4.0](https://github.com/jinzcdev/leetcode-mcp-server/compare/v1.3.0...v1.4.0) (2026-07-12)
 
 ### Features
